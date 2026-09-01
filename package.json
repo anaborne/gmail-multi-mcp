@@ -1,0 +1,58 @@
+{
+  "name": "gmail-multi-mcp",
+  "version": "0.1.0",
+  "description": "An MCP server that holds several Gmail accounts at once. Every tool takes an account, the label-to-mailbox binding is verified against Google, and sending is off until you turn it on.",
+  "license": "MIT",
+  "author": "Immanuel Anaborne <immanuel.anaborne@gmail.com>",
+  "homepage": "https://github.com/anaborne/gmail-multi-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anaborne/gmail-multi-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anaborne/gmail-multi-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gmail",
+    "multi-account",
+    "email",
+    "llm",
+    "claude",
+    "ai-tools"
+  ],
+  "type": "module",
+  "bin": {
+    "gmail-multi-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "authorize": "node scripts/authorize.mjs",
+    "accounts": "npm run build && node scripts/accounts.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "verify": "npm run build && node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "googleapis": "^176.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
