@@ -82,7 +82,7 @@ Read only: `GMAIL_SCOPE_PROFILE=readonly` requests `gmail.readonly`, and the ser
 
 ## Runtime and testing
 
-68 tests, `npm test`, running in under a second from a clean clone with no network. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
+68 tests, `npm test`, run from a clean clone with no network and no credentials. CI runs them on Node 18, 20, and 22. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
 
 The two desktop dialogs are the one part not covered by the unit suite, since osascript needs macOS and a logged-in window server. `npm run popup-test` covers them by hand.
 
