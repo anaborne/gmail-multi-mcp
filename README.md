@@ -1,30 +1,46 @@
 # gmail-multi-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that holds more than one Gmail account at once. Every tool takes an `account` argument naming a mailbox, and the mapping from label to mailbox is checked against Google before a token is used for anything.
+An [MCP](https://modelcontextprotocol.io) server that holds several Gmail accounts open at the same time. Reads follow an active mailbox that a `set_active_account` call switches, writes always name their own, every call is logged, and a desktop dialog confirms each send.
 
 ## The problem
 
 A Gmail connector authenticates one Google account. Reaching a second mailbox means disconnecting and reconnecting, or forwarding one account into the other, which merges two inboxes that were kept apart on purpose. Both lose the distinction that decides what happens next: a recruiter's reply in the job-search account is not the same event as the same message in a personal one.
 
+Every configured account here is open from the moment the server starts. Nothing needs connecting or switching to reach a mailbox, and `search_all_accounts` queries all of them in parallel.
+
 ## Tools
 
+Accounts: `list_accounts`, `set_active_account`, `get_active_account`, `clear_active_account`, `recent_activity`
 Reading: `search_messages`, `search_all_accounts`, `get_thread`, `get_message`, `list_labels`
 Drafts: `list_drafts`, `get_draft`, `create_draft`, `update_draft`, `delete_draft`
 Organizing: `modify_labels`, `trash_thread`
 Sending: `send_draft`, `send_message`, registered only when `GMAIL_ALLOW_SEND=true`
-Accounts: `list_accounts`
 
-`search_all_accounts` runs one query against every configured mailbox and groups the results by account. `create_draft` and `send_message` take a `replyToMessageId`, which fills in the thread, the `Re:` subject, the recipient, and the `In-Reply-To` and `References` headers.
+`search_all_accounts` runs one query against every mailbox at once and takes `merge` for a single date-ordered list across them, each row tagged with the account it came from. `create_draft` and `send_message` take a `replyToMessageId`, which fills in the thread, the `Re:` subject, the recipient, and the `In-Reply-To` and `References` headers.
 
-## Design
+## Switching accounts
 
-Account is an argument, not a mode. There is no `switch_account` tool and no current account. A model that selects a mailbox once and carries it forward eventually reads one inbox and replies out of the other, and nothing in the transcript records which one it used. Here every call names its mailbox and every result echoes the mailbox it came from.
+`set_active_account` sets the mailbox that later reads use when they do not name one. Called with no argument on macOS it raises a picker on the desktop and the user chooses. The selection lapses after `GMAIL_ACTIVE_TTL_MINUTES`, sixty by default, so a choice made this morning cannot steer a call this evening.
+
+Reads may still name a different mailbox, and the result says so in its header. Writes are different. Every write names its own account, never inherits the active one, and is refused outright when the two differ unless the call also passes `confirmAccountSwitch`. The asymmetry is the point: a read of the wrong mailbox is a wasted call, a send from the wrong mailbox is in somebody else's inbox.
+
+## What gets logged
+
+Every call appends a JSON line to `GMAIL_AUDIT_LOG`, `~/.gmail-multi-mcp/audit.jsonl` by default: the tool, the mailbox, whether that was the active one, the outcome, and for drafts and sends the recipients, the subject, and the resulting IDs. `recent_activity` reads it back, so "which account did that go out from" has an answer that does not depend on remembering. Set `GMAIL_AUDIT_LOG=off` to turn it off. A log that cannot be written warns once on stderr and never fails a call.
+
+## Confirming a send
+
+With `GMAIL_ALLOW_SEND=true`, every send raises a native macOS dialog showing the account, the from address, the recipients, the subject, and the first 400 characters of the body. Anything other than a click on Send stops the call, the dialog being dismissed, timing out after two minutes, and failing to appear included. `npm run popup-test` exercises both dialogs without touching Gmail.
+
+MCP elicitation would put this prompt in the chat instead, and Claude Code supports it. Claude Desktop does not, and the server runs on the user's machine either way, so the dialog goes on the desktop. `GMAIL_CONFIRM_POPUP=off` removes it.
+
+## Other design decisions
 
 Labels are verified, not trusted. `GMAIL_ACCOUNT_JOBS_EMAIL` is an assertion about what a refresh token opens. On an account's first use the server calls `users.getProfile` and compares; a mismatch disables that account and names both addresses. The setup error this catches is pasting the second authorize run's token under the first label, which otherwise produces a server that works and reads the wrong inbox.
 
-Sending is off until it is turned on. With `GMAIL_ALLOW_SEND` unset, `send_draft` and `send_message` are not registered, so the tool list a client sees contains no way to put mail on the wire. Drafts still work, and a person sends them from Gmail. Only the exact string `true` enables sending; any other value is refused at startup rather than guessed.
+Sending is off until it is turned on. With `GMAIL_ALLOW_SEND` unset, the send tools are not registered, so the tool list a client sees contains no way to put mail on the wire. Only the exact string `true` enables sending; any other value is refused at startup rather than guessed.
 
-Header injection is refused. Subject, address, and threading values are checked for CR and LF before the message is assembled, and addresses must be bare, so text arriving in an email body cannot add its own `Bcc`.
+Header injection is refused. Subject, address, and threading values are checked for CR and LF before the message is assembled, and addresses must be bare, so text arriving in an email body cannot add its own `Bcc`. Dialog text reaches AppleScript through `on run argv`, never string interpolation, for the same reason.
 
 ## Setup
 
@@ -66,11 +82,13 @@ Read only: `GMAIL_SCOPE_PROFILE=readonly` requests `gmail.readonly`, and the ser
 
 ## Runtime and testing
 
-38 tests, `npm test`, running in under a second from a clean clone with no network. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject. It creates one draft per account, deletes them on the way out including on failure, and never sends.
+68 tests, `npm test`, running in under a second from a clean clone with no network. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
+
+The two desktop dialogs are the one part not covered by the unit suite, since osascript needs macOS and a logged-in window server. `npm run popup-test` covers them by hand.
 
 ## Limits
 
-Attachments are listed with their IDs and sizes, not downloaded. Nothing here deletes mail permanently. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled.
+Attachments are listed with their IDs and sizes, not downloaded. Nothing here deletes mail permanently. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled. The dialogs are macOS only, and on any other platform a send is refused while `GMAIL_CONFIRM_POPUP` is on.
 
 ## License
 

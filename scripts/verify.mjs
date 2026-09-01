@@ -91,12 +91,57 @@ try {
       : !names.includes('send_draft') && !names.includes('send_message'),
     `tools: ${names.join(', ')}`,
   );
+  const READS = ['search_messages', 'get_thread', 'get_message', 'list_labels', 'list_drafts', 'get_draft'];
+  const WRITES = ['create_draft', 'update_draft', 'delete_draft', 'modify_labels', 'trash_thread'];
+  const byName = new Map(tools.map((t) => [t.name, t]));
+
   check(
-    'every account-scoped tool requires an account',
-    tools
-      .filter((t) => !['list_accounts', 'search_all_accounts'].includes(t.name))
-      .every((t) => (t.inputSchema?.required ?? []).includes('account')),
+    'reads may inherit the active account',
+    READS.every((n) => !(byName.get(n)?.inputSchema?.required ?? []).includes('account')),
   );
+  check(
+    'writes must name their account',
+    [...WRITES, ...(config.allowSend ? ['send_draft', 'send_message'] : [])].every((n) =>
+      (byName.get(n)?.inputSchema?.required ?? []).includes('account'),
+    ),
+  );
+  check('the switch tools are registered', ['set_active_account', 'get_active_account', 'clear_active_account', 'recent_activity'].every((n) => byName.has(n)));
+
+  section('Active account');
+
+  const noAccount = await client.callTool({ name: 'search_messages', arguments: { query: 'x' } });
+  check('a read with nothing active is refused', noAccount.isError === true, text(noAccount));
+
+  const first = config.accounts[0];
+  const second = config.accounts[1];
+
+  const setActive = await client.callTool({ name: 'set_active_account', arguments: { account: first.label } });
+  check(`set_active_account selects ${first.label}`, text(setActive).includes(`active account: ${first.label}`), text(setActive));
+
+  const inherited = await client.callTool({ name: 'search_messages', arguments: { maxResults: 1 } });
+  check('a read with no account now uses the active one', text(inherited).startsWith(`account: ${first.label}`), text(inherited).slice(0, 120));
+
+  if (second) {
+    const wandering = await client.callTool({ name: 'search_messages', arguments: { account: second.label, maxResults: 1 } });
+    check('a read of another mailbox is allowed and flagged', text(wandering).includes('NOT the active account'), text(wandering).slice(0, 160));
+
+    const diverged = await client.callTool({
+      name: 'create_draft',
+      arguments: { account: second.label, to: [second.email], subject: 'x', body: 'x' },
+    });
+    check('a write into another mailbox is refused', diverged.isError === true, text(diverged));
+
+    const overridden = await client.callTool({
+      name: 'create_draft',
+      arguments: { account: second.label, to: [second.email], subject: `gmail-multi-mcp verify ${STAMP} override`, body: 'x', confirmAccountSwitch: true },
+    });
+    const overrideId = /draft: (\S+)/.exec(text(overridden))?.[1];
+    check('confirmAccountSwitch allows the write through', !!overrideId, text(overridden));
+    if (overrideId) created.push([second.label, overrideId]);
+  }
+
+  await client.callTool({ name: 'clear_active_account', arguments: {} });
+  check('clear_active_account puts reads back to naming their mailbox', (await client.callTool({ name: 'search_messages', arguments: { query: 'x' } })).isError === true);
 
   section('Account identity');
 
@@ -171,6 +216,19 @@ try {
     config.accounts.every((a) => text(all).includes(`account: ${a.label} (${a.email})`)),
     text(all).slice(0, 400),
   );
+
+  const merged = await client.callTool({
+    name: 'search_all_accounts',
+    arguments: { query: `subject:"gmail-multi-mcp verify ${STAMP}"`, merge: true },
+  });
+  check('merged results are tagged with their account', config.accounts.some((a) => text(merged).includes(`[${a.label}]`)) || text(merged).includes('no matches'), text(merged).slice(0, 300));
+
+  section('Audit log');
+
+  const activity = await client.callTool({ name: 'recent_activity', arguments: { limit: 50 } });
+  const log = text(activity);
+  check('the log recorded a draft with its recipient', log.includes('create_draft') && log.includes('to '), log.slice(0, 300));
+  check('the log recorded the refused divergence', !config.accounts[1] || log.includes('refused'), log.slice(0, 300));
 } finally {
   section('Cleanup');
   for (const [label, draftId] of created) {

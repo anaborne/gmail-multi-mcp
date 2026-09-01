@@ -1,7 +1,7 @@
 {
   "name": "gmail-multi-mcp",
-  "version": "0.1.0",
-  "description": "An MCP server that holds several Gmail accounts at once. Every tool takes an account, the label-to-mailbox binding is verified against Google, and sending is off until you turn it on.",
+  "version": "0.2.0",
+  "description": "An MCP server that holds several Gmail accounts open at once. Reads follow an active mailbox you can switch, writes always name theirs, every call is logged, and a desktop dialog confirms each send.",
   "license": "MIT",
   "author": "Immanuel Anaborne <immanuel.anaborne@gmail.com>",
   "homepage": "https://github.com/anaborne/gmail-multi-mcp",
@@ -44,7 +44,8 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "verify": "npm run build && node scripts/verify.mjs"
+    "verify": "npm run build && node scripts/verify.mjs",
+    "popup-test": "node scripts/popup-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

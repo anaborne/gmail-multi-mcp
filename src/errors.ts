@@ -79,6 +79,56 @@ export class FromMismatchError extends ToolError {
   }
 }
 
+/** A read was attempted with no account named and no active selection to fall back on. */
+export class NoActiveAccountError extends ToolError {
+  constructor(known: string[], lapsed: boolean) {
+    super(
+      (lapsed
+        ? 'The active account selection has lapsed, so this call has no mailbox. '
+        : 'No account was named and no active account is set, so this call has no mailbox. ') +
+        `Pass "account" explicitly, or call set_active_account first. Available: ${known.join(', ')}.`,
+      'NO_ACTIVE_ACCOUNT',
+    );
+  }
+}
+
+/**
+ * A write named a different mailbox than the active one. Reads are allowed to wander;
+ * a compose or a send is not, because that is the call whose blast radius is another
+ * person's inbox and which cannot be taken back.
+ */
+export class AccountDivergenceError extends ToolError {
+  constructor(requested: string, active: string, tool: string) {
+    super(
+      `Refusing ${tool} on account "${requested}" while the active account is "${active}". ` +
+        `This is the guard against composing in one mailbox and sending from another. ` +
+        `If "${requested}" is right, either call set_active_account with "${requested}" first, ` +
+        `or repeat this call with confirmAccountSwitch: true. Say which mailbox you are using ` +
+        `when you tell the user what you did.`,
+      'ACCOUNT_DIVERGENCE',
+    );
+  }
+}
+
+/** The desktop confirmation did not come back as an explicit yes. */
+export class SendNotConfirmedError extends ToolError {
+  constructor(outcome: 'declined' | 'timeout' | 'unavailable', to: string[]) {
+    const reason = {
+      declined: 'The confirmation dialog was dismissed, so nothing was sent.',
+      timeout: 'The confirmation dialog timed out with no answer, so nothing was sent.',
+      unavailable:
+        'The confirmation dialog could not be shown, and an unconfirmable send is refused rather ' +
+        'than allowed through. This server only raises the dialog on macOS. Set ' +
+        'GMAIL_CONFIRM_POPUP=off to send without it, on a machine where nobody is watching.',
+    }[outcome];
+    super(
+      `${reason} The message to ${to.join(', ') || '(no recipient)'} was not sent. The draft, if one ` +
+        `exists, is untouched. Do not retry without asking the user first.`,
+      'SEND_NOT_CONFIRMED',
+    );
+  }
+}
+
 export function envSuffix(label: string): string {
   return label.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 }

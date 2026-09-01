@@ -7,6 +7,9 @@
  * resolve() checks it against users.getProfile before the token is used for anything.
  */
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { gmail_v1 } from 'googleapis';
@@ -39,6 +42,12 @@ export interface ServerConfig {
   accounts: AccountConfig[];
   scopeProfile: ScopeProfile;
   allowSend: boolean;
+  /** Minutes an active-account selection stays good. 0 disables expiry. */
+  activeTtlMinutes: number;
+  /** Where the call log is appended. undefined means logging is off. */
+  auditLogPath: string | undefined;
+  /** Raise a desktop dialog before a send. */
+  confirmSends: boolean;
 }
 
 const LABEL_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
@@ -71,6 +80,41 @@ export function parseAllowSend(raw: string | undefined): boolean {
     `GMAIL_ALLOW_SEND=${JSON.stringify(raw)} is not a yes or a no. Set it to exactly "true" to enable ` +
       `sending, or leave it unset. Anything ambiguous is refused rather than guessed, because the ` +
       `wrong guess puts mail on the wire.`,
+  );
+}
+
+/** Default of 60 minutes. An hour is long enough not to nag and short enough that a
+ * selection made this morning does not steer a call this evening. */
+export function parseActiveTtl(raw: string | undefined): number {
+  const value = raw?.trim();
+  if (value === undefined || value === '') return 60;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+    throw new ConfigError(
+      `GMAIL_ACTIVE_TTL_MINUTES=${JSON.stringify(raw)} is not a whole number of minutes. Use a ` +
+        `positive integer, or 0 to let an active account selection stand until the server restarts.`,
+    );
+  }
+  return parsed;
+}
+
+export function parseAuditLogPath(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  if (value === 'off' || value === 'none') return undefined;
+  if (!value) return join(homedir(), '.gmail-multi-mcp', 'audit.jsonl');
+  return value;
+}
+
+/** Defaults on. A dialog nobody asked for is a smaller problem than mail nobody saw. */
+export function parseConfirmSends(raw: string | undefined): boolean {
+  const value = raw?.trim().toLowerCase();
+  if (value === undefined || value === '' || value === 'send' || value === 'on' || value === 'true') {
+    return true;
+  }
+  if (value === 'off' || value === 'false' || value === 'none') return false;
+  throw new ConfigError(
+    `GMAIL_CONFIRM_POPUP=${JSON.stringify(raw)} is not a setting. Use "send" (default, a desktop ` +
+      `dialog before every send) or "off".`,
   );
 }
 
@@ -171,6 +215,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
     accounts,
     scopeProfile: parseScopeProfile(env.GMAIL_SCOPE_PROFILE),
     allowSend: parseAllowSend(env.GMAIL_ALLOW_SEND),
+    activeTtlMinutes: parseActiveTtl(env.GMAIL_ACTIVE_TTL_MINUTES),
+    auditLogPath: parseAuditLogPath(env.GMAIL_AUDIT_LOG),
+    confirmSends: parseConfirmSends(env.GMAIL_CONFIRM_POPUP),
   };
 }
 
