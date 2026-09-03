@@ -38,7 +38,7 @@ MCP elicitation would put this prompt in the chat instead, and Claude Code suppo
 
 Labels are verified, not trusted. `GMAIL_ACCOUNT_JOBS_EMAIL` is an assertion about what a refresh token opens. On an account's first use the server calls `users.getProfile` and compares; a mismatch disables that account and names both addresses. The setup error this catches is pasting the second authorize run's token under the first label, which otherwise produces a server that works and reads the wrong inbox.
 
-Sending is off until it is turned on. With `GMAIL_ALLOW_SEND` unset, the send tools are not registered, so the tool list a client sees contains no way to put mail on the wire. Only the exact string `true` enables sending; any other value is refused at startup rather than guessed.
+Sending is off until it is turned on. With `GMAIL_ALLOW_SEND` unset, the send tools are not registered, so the tool list a client sees contains no way to put mail on the wire. Only `true` enables sending, case-insensitively; `false`, `0`, `no` and an empty value mean off, and anything else is refused at startup rather than guessed.
 
 Header injection is refused. Subject, address, and threading values are checked for CR and LF before the message is assembled, and addresses must be bare, so text arriving in an email body cannot add its own `Bcc`. Dialog text reaches AppleScript through `on run argv`, never string interpolation, for the same reason.
 
@@ -77,18 +77,18 @@ Any number of accounts works. Add the label to `GMAIL_ACCOUNTS` and give it an `
 
 ## Scopes
 
-Full, the default: `gmail.modify`. Read, drafts, send, labels, trash. It cannot permanently delete mail.
+Full, the default: `gmail.modify`. Read, drafts, send, labels, trash. It cannot permanently delete a message or a thread; the one irreversible operation is `delete_draft`.
 Read only: `GMAIL_SCOPE_PROFILE=readonly` requests `gmail.readonly`, and the server registers only the read tools.
 
 ## Runtime and testing
 
-68 tests, `npm test`, run from a clean clone with no network and no credentials. CI runs them on Node 18, 20, and 22. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
+70 tests, `npm test`, run from a clean clone with no network and no credentials. CI runs them on Node 18, 20, and 22. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
 
 The two desktop dialogs are the one part not covered by the unit suite, since osascript needs macOS and a logged-in window server. `npm run popup-test` covers them by hand.
 
 ## Limits
 
-Attachments are listed with their IDs and sizes, not downloaded. Nothing here deletes mail permanently. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled. The dialogs are macOS only, and on any other platform a send is refused while `GMAIL_CONFIRM_POPUP` is on.
+Attachments are listed with their filenames, types, and sizes, not downloaded. Nothing here permanently deletes a received message; `trash_thread` is reversible, and `delete_draft` is the one irreversible call. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled. The dialogs are macOS only, and on any other platform a send is refused while `GMAIL_CONFIRM_POPUP` is on.
 
 ## License
 

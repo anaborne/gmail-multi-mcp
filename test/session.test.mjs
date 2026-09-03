@@ -107,7 +107,12 @@ test('logging off is not an error and reads as empty', () => {
 
 test('a log that cannot be written warns once and never throws', () => {
   const warnings = [];
-  const log = new AuditLog('/etc/gmm-not-writable/audit.jsonl', (m) => warnings.push(m));
+  // A regular file standing where a directory would have to be. mkdirSync fails with
+  // ENOTDIR for root and non-root alike, so the test does not depend on the process being
+  // unprivileged, and it writes nothing outside the temp directory.
+  const blocker = join(mkdtempSync(join(tmpdir(), 'gmm-')), 'not-a-directory');
+  writeFileSync(blocker, 'x');
+  const log = new AuditLog(join(blocker, 'audit.jsonl'), (m) => warnings.push(m));
   log.record({ tool: 'a', outcome: 'ok' });
   log.record({ tool: 'b', outcome: 'ok' });
   assert.equal(warnings.length, 1, 'a failing log must not warn on every call');

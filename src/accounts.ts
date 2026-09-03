@@ -67,7 +67,8 @@ export function parseScopeProfile(raw: string | undefined): ScopeProfile {
 }
 
 /**
- * Only the exact string "true" enables sending. A truthiness check would turn
+ * Only "true" enables sending, case-insensitively. "false", "0", "no" and an empty value
+ * mean off, and anything else is refused at startup. A truthiness check would turn
  * GMAIL_ALLOW_SEND=false, the thing a careful person writes to mean off, into on.
  */
 export function parseAllowSend(raw: string | undefined): boolean {
@@ -142,8 +143,10 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
     );
   }
 
-  const sharedId = env.GMAIL_CLIENT_ID?.trim() ?? env.GOOGLE_CLIENT_ID?.trim();
-  const sharedSecret = env.GMAIL_CLIENT_SECRET?.trim() ?? env.GOOGLE_CLIENT_SECRET?.trim();
+  // || here, because ?? keeps an empty-but-present variable, and that is the shape
+  // `cp .env.example .env` leaves behind for anyone supplying GOOGLE_CLIENT_ID instead.
+  const sharedId = env.GMAIL_CLIENT_ID?.trim() || env.GOOGLE_CLIENT_ID?.trim();
+  const sharedSecret = env.GMAIL_CLIENT_SECRET?.trim() || env.GOOGLE_CLIENT_SECRET?.trim();
 
   const accounts: AccountConfig[] = [];
   const seenLabels = new Set<string>();
@@ -170,8 +173,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
     const suffix = envSuffix(label);
     const email = env[`GMAIL_ACCOUNT_${suffix}_EMAIL`]?.trim();
     const refreshToken = env[`GMAIL_ACCOUNT_${suffix}_REFRESH_TOKEN`]?.trim();
-    const clientId = env[`GMAIL_ACCOUNT_${suffix}_CLIENT_ID`]?.trim() ?? sharedId;
-    const clientSecret = env[`GMAIL_ACCOUNT_${suffix}_CLIENT_SECRET`]?.trim() ?? sharedSecret;
+    const clientId = env[`GMAIL_ACCOUNT_${suffix}_CLIENT_ID`]?.trim() || sharedId;
+    const clientSecret = env[`GMAIL_ACCOUNT_${suffix}_CLIENT_SECRET`]?.trim() || sharedSecret;
 
     const missing: string[] = [];
     if (!email) missing.push(`GMAIL_ACCOUNT_${suffix}_EMAIL`);

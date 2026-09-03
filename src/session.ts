@@ -8,7 +8,17 @@
  * rather than only at the moment it happens.
  */
 
-import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, existsSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  statSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 
 export interface ActiveSelection {
@@ -21,6 +31,10 @@ export interface ActiveSelection {
 
 export class Session {
   private selection: ActiveSelection | undefined;
+  /** True once a selection has been dropped for age. active() returns undefined in both
+   * cases, so without this the error cannot tell "you never chose" from "your choice ran
+   * out". Those need different answers. */
+  private lapsed = false;
 
   constructor(
     /** Minutes before the selection lapses. 0 disables expiry. */
@@ -30,11 +44,13 @@ export class Session {
 
   setActive(label: string, email: string, note?: string): ActiveSelection {
     this.selection = { label, email, setAt: this.now(), note };
+    this.lapsed = false;
     return this.selection;
   }
 
   clear(): void {
     this.selection = undefined;
+    this.lapsed = false;
   }
 
   /** Returns nothing once the selection has lapsed, so a stale one cannot steer a call. */
@@ -44,9 +60,15 @@ export class Session {
     const age = this.now() - this.selection.setAt;
     if (age > this.ttlMinutes * 60_000) {
       this.selection = undefined;
+      this.lapsed = true;
       return undefined;
     }
     return this.selection;
+  }
+
+  /** True when a selection existed and its window closed. False when none was ever made. */
+  didLapse(): boolean {
+    return this.lapsed;
   }
 
   /** Whole minutes remaining, for the message that tells a model when to re-select. */
@@ -135,9 +157,15 @@ export class AuditLog {
       if (size <= TAIL_BYTES) {
         text = readFileSync(this.path, 'utf8');
       } else {
+        // Read from a position, so a large log costs one buffer. Reading the whole file
+        // and then copying the end out of it holds all of it in memory.
         const buffer = Buffer.alloc(TAIL_BYTES);
-        const fd = readFileSync(this.path);
-        fd.copy(buffer, 0, size - TAIL_BYTES);
+        const fd = openSync(this.path, 'r');
+        try {
+          readSync(fd, buffer, 0, TAIL_BYTES, size - TAIL_BYTES);
+        } finally {
+          closeSync(fd);
+        }
         // Drop the first, probably partial, line.
         text = buffer.toString('utf8').slice(buffer.toString('utf8').indexOf('\n') + 1);
       }

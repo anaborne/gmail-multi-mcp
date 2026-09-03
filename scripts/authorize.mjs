@@ -126,13 +126,15 @@ const label = args.account;
 const suffix = envSuffix(label);
 const scope = args.scope === 'readonly' ? READONLY_SCOPE : MODIFY_SCOPE;
 
+// || here, because .env.example ships GMAIL_CLIENT_ID= empty and ?? would keep that
+// empty string over the variable the user did set.
 const clientId =
-  process.env[`GMAIL_ACCOUNT_${suffix}_CLIENT_ID`]?.trim() ??
-  process.env.GMAIL_CLIENT_ID?.trim() ??
+  process.env[`GMAIL_ACCOUNT_${suffix}_CLIENT_ID`]?.trim() ||
+  process.env.GMAIL_CLIENT_ID?.trim() ||
   process.env.GOOGLE_CLIENT_ID?.trim();
 const clientSecret =
-  process.env[`GMAIL_ACCOUNT_${suffix}_CLIENT_SECRET`]?.trim() ??
-  process.env.GMAIL_CLIENT_SECRET?.trim() ??
+  process.env[`GMAIL_ACCOUNT_${suffix}_CLIENT_SECRET`]?.trim() ||
+  process.env.GMAIL_CLIENT_SECRET?.trim() ||
   process.env.GOOGLE_CLIENT_SECRET?.trim();
 
 if (!clientId || !clientSecret) {

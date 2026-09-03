@@ -45,6 +45,15 @@ test('falls back to GOOGLE_ credentials so one OAuth client can serve both serve
   assert.equal(config.accounts[0].clientId, 'shared-id');
 });
 
+test('an empty GMAIL_CLIENT_ID falls back too, since that is what .env.example ships', () => {
+  const env = { ...BASE, GMAIL_CLIENT_ID: '', GMAIL_CLIENT_SECRET: '' };
+  env.GOOGLE_CLIENT_ID = 'shared-id';
+  env.GOOGLE_CLIENT_SECRET = 'shared-secret';
+  const config = configFromEnv(env);
+  assert.equal(config.accounts[0].clientId, 'shared-id');
+  assert.equal(config.accounts[0].clientSecret, 'shared-secret');
+});
+
 test('a per-account client overrides the shared one', () => {
   const config = configFromEnv({ ...BASE, GMAIL_ACCOUNT_JOBS_CLIENT_ID: 'other-id' });
   assert.equal(config.accounts[0].clientId, 'client-id');
@@ -101,7 +110,7 @@ test('labels are lowercased so the model cannot miss by case', () => {
   assert.equal(config.accounts[0].email, 'b@gmail.com');
 });
 
-test('only the exact string true enables sending', () => {
+test('true enables sending case-insensitively, and an ambiguous value is refused', () => {
   assert.equal(parseAllowSend(undefined), false);
   assert.equal(parseAllowSend(''), false);
   assert.equal(parseAllowSend('false'), false);

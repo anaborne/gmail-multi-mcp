@@ -233,8 +233,19 @@ try {
   section('Cleanup');
   for (const [label, draftId] of created) {
     try {
-      await client.callTool({ name: 'delete_draft', arguments: { account: label, draftId } });
-      console.log(`  ok   deleted draft ${draftId} in ${label}`);
+      // A tool-level refusal comes back as isError, not as a throw, so the return value
+      // has to be read. confirmAccountSwitch keeps the delete working wherever the try
+      // block died, including while a different account is still the active one.
+      const deleted = await client.callTool({
+        name: 'delete_draft',
+        arguments: { account: label, draftId, confirmAccountSwitch: true },
+      });
+      if (deleted.isError) {
+        console.log(`  FAIL could not delete draft ${draftId} in ${label}: ${text(deleted)}`);
+        failed += 1;
+      } else {
+        console.log(`  ok   deleted draft ${draftId} in ${label}`);
+      }
     } catch (err) {
       console.log(`  FAIL could not delete draft ${draftId} in ${label}: ${err.message}`);
       failed += 1;

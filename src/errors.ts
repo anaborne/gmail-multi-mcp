@@ -172,8 +172,8 @@ export function describeError(err: unknown, where?: string): string {
       if (reason === 'insufficientPermissions' || reason === 'forbidden') {
         return (
           `Permission denied (403)${on}. The token was granted a scope that does not cover this ` +
-          `call. GMAIL_SCOPE_PROFILE=readonly cannot write; gmail.modify cannot permanently delete. ` +
-          `Re-authorize that account with the scope you need.`
+          `call. GMAIL_SCOPE_PROFILE=readonly cannot write; gmail.modify cannot permanently delete ` +
+          `a message. Re-authorize that account with the scope you need.`
         );
       }
       if (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded') {

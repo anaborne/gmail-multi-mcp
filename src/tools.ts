@@ -147,7 +147,7 @@ export function registerTools(
     if (!active) {
       throw new NoActiveAccountError(
         registry.list().map((a) => `${a.label} (${a.email})`),
-        false,
+        session.didLapse(),
       );
     }
     return registry.resolve(active.label);
@@ -253,7 +253,7 @@ export function registerTools(
           if (!popupsPossible(deps.platform)) {
             throw new NoActiveAccountError(
               registry.list().map((a) => `${a.label} (${a.email})`),
-              false,
+              session.didLapse(),
             );
           }
           const picked = await deps.chooseAccount(
@@ -310,6 +310,7 @@ export function registerTools(
             : recent
                 .map((r) => `  ${r.at}  ${r.tool}  ${r.account ?? '-'}  ${r.outcome}`)
                 .join('\n');
+        note('get_active_account', 'ok');
         return ok(
           (active
             ? `active: ${active.label} (${active.email})${remaining === undefined ? '' : `, lapses in ${remaining} min`}` +
@@ -359,6 +360,7 @@ export function registerTools(
           return ok('Call logging is off. Set GMAIL_AUDIT_LOG to a file path to turn it on.');
         }
         const records = audit.recent(Math.max(1, Math.min(200, limit ?? 20)), account);
+        note('recent_activity', 'ok', { account });
         if (records.length === 0) return ok('no matching entries');
         return ok(
           records
@@ -474,18 +476,31 @@ export function registerTools(
           }),
         );
 
-        note('search_all_accounts', 'ok', { detail: query });
+        // A mailbox that could not be searched is a failure. It is reported and logged
+        // as one, and it goes first, so a page of hits from the healthy accounts cannot
+        // bury it.
+        const failures = results.filter((r) => r.error);
+        if (failures.length > 0) {
+          note('search_all_accounts', 'error', {
+            detail: `${query} (not searched: ${failures.map((r) => r.config.label).join(', ')})`,
+          });
+        } else {
+          note('search_all_accounts', 'ok', { detail: query });
+        }
+
+        const answer = (text: string): TextResult =>
+          failures.length > 0 ? { content: [{ type: 'text', text }], isError: true } : ok(text);
 
         if (merge) {
           const rows = results
             .flatMap((r) => r.messages.map((m) => ({ label: r.config.label, m })))
             .sort((a, b) => Date.parse(b.m.date ?? '') - Date.parse(a.m.date ?? ''))
             .map(({ label, m }) => `[${label}] ${renderSummary(m).split('\n').join('\n  ')}`);
-          const errors = results.filter((r) => r.error).map((r) => `[${r.config.label}] ${r.error}`);
-          return ok([...rows, ...errors].join('\n\n') || 'no matches in any account');
+          const errors = failures.map((r) => `[${r.config.label}] ${r.error}`);
+          return answer([...errors, ...rows].join('\n\n') || 'no matches in any account');
         }
 
-        return ok(
+        return answer(
           results
             .map((r) =>
               r.error
@@ -819,7 +834,11 @@ export function registerTools(
       guard('delete_draft', account, async () => {
         const resolved = await forWrite('delete_draft', account, confirmAccountSwitch);
         await api.deleteDraft(resolved, draftId);
-        note('delete_draft', 'ok', { account: resolved.config.label, draftId });
+        note('delete_draft', 'ok', {
+          account: resolved.config.label,
+          diverged: divergedFrom(resolved),
+          draftId,
+        });
         return ok(header(resolved, `draft ${draftId} deleted`));
       }),
   );
@@ -844,7 +863,11 @@ export function registerTools(
       guard('modify_labels', account, async () => {
         const resolved = await forWrite('modify_labels', account, confirmAccountSwitch);
         const labels = await api.modifyThreadLabels(resolved, threadId, addLabelIds ?? [], removeLabelIds ?? []);
-        note('modify_labels', 'ok', { account: resolved.config.label, detail: threadId });
+        note('modify_labels', 'ok', {
+          account: resolved.config.label,
+          diverged: divergedFrom(resolved),
+          detail: threadId,
+        });
         return ok(header(resolved, `thread ${threadId} now labelled: ${labels.join(', ')}`));
       }),
   );
@@ -855,7 +878,7 @@ export function registerTools(
       title: 'Move a thread to the trash',
       description:
         'Move a whole thread to the trash, where Gmail keeps it for 30 days. Reversible with untrash ' +
-        'set to true. This server has no way to delete mail permanently.',
+        'set to true. This server cannot permanently delete a message or a thread.',
       inputSchema: {
         account: accountWrite,
         threadId: z.string().describe('Thread ID in this same account.'),
@@ -869,11 +892,19 @@ export function registerTools(
         const resolved = await forWrite('trash_thread', account, confirmAccountSwitch);
         if (untrash) {
           await api.untrashThread(resolved, threadId);
-          note('trash_thread', 'ok', { account: resolved.config.label, detail: `untrash ${threadId}` });
+          note('trash_thread', 'ok', {
+            account: resolved.config.label,
+            diverged: divergedFrom(resolved),
+            detail: `untrash ${threadId}`,
+          });
           return ok(header(resolved, `thread ${threadId} restored from trash`));
         }
         await api.trashThread(resolved, threadId);
-        note('trash_thread', 'ok', { account: resolved.config.label, detail: `trash ${threadId}` });
+        note('trash_thread', 'ok', {
+          account: resolved.config.label,
+          diverged: divergedFrom(resolved),
+          detail: `trash ${threadId}`,
+        });
         return ok(header(resolved, `thread ${threadId} moved to trash`));
       }),
   );
@@ -919,9 +950,15 @@ export function registerTools(
       guard('send_draft', account, async () => {
         const resolved = await forWrite('send_draft', account, confirmAccountSwitch);
         const existing = await api.getDraft(resolved, draftId);
+        // The dialog and the log both get every recipient the draft carries, Cc included,
+        // parsed the way an address list is parsed. A comma inside a quoted display name
+        // is part of the name.
+        const recipients = parseAddressList(existing.to);
+        const copies = parseAddressList(existing.cc);
         await gateSend(resolved, {
           from: resolved.config.email,
-          to: existing.to ? existing.to.split(',').map((s) => s.trim()) : [],
+          to: recipients,
+          cc: copies.length > 0 ? copies : undefined,
           subject: existing.subject ?? '',
           text: existing.body,
         });
@@ -929,7 +966,9 @@ export function registerTools(
         note('send_draft', 'ok', {
           account: resolved.config.label,
           email: resolved.config.email,
-          to: existing.to ? existing.to.split(',').map((s) => s.trim()) : [],
+          diverged: divergedFrom(resolved),
+          to: recipients,
+          cc: copies.length > 0 ? copies : undefined,
           subject: existing.subject,
           draftId,
           messageId: sent.messageId,
@@ -980,4 +1019,38 @@ export function registerTools(
 export function extractAddress(value: string): string {
   const angled = /<([^>]+)>/.exec(value);
   return (angled?.[1] ?? value).trim();
+}
+
+/**
+ * A raw To or Cc header to the bare addresses in it. The split is quote-aware, because
+ * `"Roberts, Dan" <dan@example.com>` is one recipient and splitting it on every comma
+ * produces two that do not exist. The confirmation dialog and the audit log both read
+ * from this, so a wrong answer here is a wrong answer in the place a person checks.
+ */
+export function parseAddressList(header: string | undefined): string[] {
+  if (!header) return [];
+  const parts: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < header.length; i += 1) {
+    const char = header[i]!;
+    if (quoted && char === '\\' && i + 1 < header.length) {
+      current += char + header[i + 1];
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      current += char;
+      continue;
+    }
+    if (char === ',' && !quoted) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current);
+  return parts.map(extractAddress).filter((address) => address !== '');
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { AccountRegistry, configFromEnv } from '../dist/accounts.js';
 import { AuditLog, Session } from '../dist/session.js';
-import { extractAddress, registerTools } from '../dist/tools.js';
+import { extractAddress, parseAddressList, registerTools } from '../dist/tools.js';
 
 const BASE = {
   GMAIL_CLIENT_ID: 'client-id',
@@ -282,4 +282,19 @@ test('extractAddress pulls the address out of a display-name From header', () =>
   assert.equal(extractAddress('Dan Roberts <dan@example.com>'), 'dan@example.com');
   assert.equal(extractAddress('dan@example.com'), 'dan@example.com');
   assert.equal(extractAddress('  dan@example.com  '), 'dan@example.com');
+});
+
+test('a comma inside a quoted display name does not become a second recipient', () => {
+  assert.deepEqual(
+    parseAddressList('"Roberts, Dan" <dan@example.com>, eve@example.com'),
+    ['dan@example.com', 'eve@example.com'],
+    'the send confirmation shows these, so a bogus recipient here is a bogus recipient on screen',
+  );
+  assert.deepEqual(parseAddressList('dan@example.com'), ['dan@example.com']);
+  assert.deepEqual(parseAddressList('Dan <dan@example.com>, "Eve, A." <eve@example.com>'), [
+    'dan@example.com',
+    'eve@example.com',
+  ]);
+  assert.deepEqual(parseAddressList(undefined), []);
+  assert.deepEqual(parseAddressList(''), []);
 });

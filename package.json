@@ -45,7 +45,7 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "verify": "npm run build && node scripts/verify.mjs",
-    "popup-test": "node scripts/popup-test.mjs"
+    "popup-test": "npm run build && node scripts/popup-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

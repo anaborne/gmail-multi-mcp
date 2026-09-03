@@ -2,7 +2,7 @@
 /**
  * Exercises the two desktop dialogs without touching Gmail.
  *
- *   npm run build && npm run popup-test
+ *   npm run popup-test
  *
  * Worth running once on the machine that will host the server. The dialogs are the only
  * part of this codebase that cannot be covered by the unit suite, because osascript exists
