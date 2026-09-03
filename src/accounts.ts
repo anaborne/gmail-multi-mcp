@@ -78,7 +78,7 @@ export function parseAllowSend(raw: string | undefined): boolean {
   }
   if (value === 'true') return true;
   throw new ConfigError(
-    `GMAIL_ALLOW_SEND=${JSON.stringify(raw)} is not a yes or a no. Set it to exactly "true" to enable ` +
+    `GMAIL_ALLOW_SEND=${JSON.stringify(raw)} is not a yes or a no. Set it to "true" (any case) to enable ` +
       `sending, or leave it unset. Anything ambiguous is refused rather than guessed, because the ` +
       `wrong guess puts mail on the wire.`,
   );

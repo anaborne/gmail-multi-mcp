@@ -372,6 +372,8 @@ export function registerTools(
                 r.outcome,
                 r.diverged ? 'DIVERGED' : null,
                 r.to ? `to ${r.to.join(',')}` : null,
+                r.cc ? `cc ${r.cc.join(',')}` : null,
+                r.bcc ? `bcc ${r.bcc.join(',')}` : null,
                 r.subject ? `subject ${JSON.stringify(r.subject)}` : null,
                 r.messageId ? `message ${r.messageId}` : null,
                 r.draftId ? `draft ${r.draftId}` : null,
@@ -920,6 +922,7 @@ export function registerTools(
         from: draft.from,
         to: [...(draft.to ?? [])],
         cc: draft.cc ? [...draft.cc] : undefined,
+        bcc: draft.bcc ? [...draft.bcc] : undefined,
         subject: draft.subject ?? '',
         preview: draft.text ?? draft.html ?? '',
       },
@@ -950,15 +953,18 @@ export function registerTools(
       guard('send_draft', account, async () => {
         const resolved = await forWrite('send_draft', account, confirmAccountSwitch);
         const existing = await api.getDraft(resolved, draftId);
-        // The dialog and the log both get every recipient the draft carries, Cc included,
-        // parsed the way an address list is parsed. A comma inside a quoted display name
-        // is part of the name.
+        // The dialog and the log both get every recipient the draft carries, Cc and Bcc
+        // included, parsed the way an address list is parsed. A comma inside a quoted
+        // display name is part of the name. A Bcc the sender cannot see in the dialog is
+        // the thing the dialog exists to prevent.
         const recipients = parseAddressList(existing.to);
         const copies = parseAddressList(existing.cc);
+        const blindCopies = parseAddressList(existing.bcc);
         await gateSend(resolved, {
           from: resolved.config.email,
           to: recipients,
           cc: copies.length > 0 ? copies : undefined,
+          bcc: blindCopies.length > 0 ? blindCopies : undefined,
           subject: existing.subject ?? '',
           text: existing.body,
         });
@@ -969,6 +975,7 @@ export function registerTools(
           diverged: divergedFrom(resolved),
           to: recipients,
           cc: copies.length > 0 ? copies : undefined,
+          bcc: blindCopies.length > 0 ? blindCopies : undefined,
           subject: existing.subject,
           draftId,
           messageId: sent.messageId,
@@ -1022,10 +1029,15 @@ export function extractAddress(value: string): string {
 }
 
 /**
- * A raw To or Cc header to the bare addresses in it. The split is quote-aware, because
- * `"Roberts, Dan" <dan@example.com>` is one recipient and splitting it on every comma
- * produces two that do not exist. The confirmation dialog and the audit log both read
- * from this, so a wrong answer here is a wrong answer in the place a person checks.
+ * A raw To, Cc or Bcc header to the bare addresses in it. The split understands quoted
+ * display names, because `"Roberts, Dan" <dan@example.com>` is one recipient and splitting
+ * it on every comma produces two that do not exist. Quoting is all it understands: a comma
+ * inside an RFC 5322 comment, as in `dan@example.com (Roberts, Dan)`, still splits.
+ *
+ * A header whose quotes never close is split on the raw commas instead, which can leave a
+ * fragment of a display name in the list. The confirmation dialog and the audit log both
+ * read from this, and a stray fragment a person can see beats a recipient that neither the
+ * dialog nor the log ever mentions.
  */
 export function parseAddressList(header: string | undefined): string[] {
   if (!header) return [];
@@ -1052,5 +1064,8 @@ export function parseAddressList(header: string | undefined): string[] {
     current += char;
   }
   parts.push(current);
-  return parts.map(extractAddress).filter((address) => address !== '');
+  // An unterminated quote means the quote-aware split swallowed every comma after it, and
+  // every recipient those commas separated. Fall back to the raw split so none is lost.
+  const split = quoted ? header.split(',') : parts;
+  return split.map(extractAddress).filter((address) => address !== '');
 }

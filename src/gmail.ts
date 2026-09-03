@@ -34,6 +34,8 @@ export interface MessageSummary {
 
 export interface FullMessage extends MessageSummary {
   body: string;
+  /** Present on a draft the account composed. Received mail does not carry one. */
+  bcc?: string;
   messageIdHeader?: string;
   references?: string;
   attachments: Array<{ filename: string; mimeType: string; attachmentId: string; size: number }>;
@@ -60,6 +62,7 @@ function toFull(message: gmail_v1.Schema$Message): FullMessage {
   return {
     ...summarize(message),
     body: text,
+    bcc: headerValue(headers, 'Bcc'),
     messageIdHeader: headerValue(headers, 'Message-ID') ?? headerValue(headers, 'Message-Id'),
     references: headerValue(headers, 'References'),
     attachments,

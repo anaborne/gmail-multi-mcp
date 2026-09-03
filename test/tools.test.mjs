@@ -195,6 +195,33 @@ test('a declined or timed-out confirmation stops the send', async () => {
   }
 });
 
+test('a Bcc recipient reaches the confirmation dialog as well as the wire', async () => {
+  const seen = [];
+  const { tools } = build(
+    { GMAIL_ALLOW_SEND: 'true' },
+    {
+      confirmSend: async (details) => {
+        seen.push(details);
+        return 'declined';
+      },
+    },
+  );
+  await call(tools, 'send_message', {
+    account: 'jobs',
+    to: ['dan@example.com'],
+    cc: ['cc@example.com'],
+    bcc: ['blind@example.com'],
+    subject: 'Trading ops',
+    body: 'hello',
+  });
+  assert.deepEqual(seen[0].cc, ['cc@example.com']);
+  assert.deepEqual(
+    seen[0].bcc,
+    ['blind@example.com'],
+    'a recipient the sender cannot see on the dialog is the thing the dialog exists to prevent',
+  );
+});
+
 test('the confirmation is shown the account and recipient it is confirming', async () => {
   const seen = [];
   const { tools } = build(
@@ -265,6 +292,29 @@ test('every call is written to the log when logging is on', async () => {
   assert.equal(records[1].account, 'jobs');
 });
 
+test('recent_activity renders the Cc and Bcc the log holds', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const path = join(mkdtempSync(join(tmpdir(), 'gmm-cc-')), 'audit.jsonl');
+
+  const { tools, audit } = build({ GMAIL_AUDIT_LOG: path });
+  audit.record({
+    tool: 'send_draft',
+    outcome: 'ok',
+    account: 'jobs',
+    to: ['dan@example.com'],
+    cc: ['cc@example.com'],
+    bcc: ['blind@example.com'],
+    subject: 'Trading ops',
+  });
+
+  const rendered = textOf(await call(tools, 'recent_activity', {}));
+  assert.match(rendered, /to dan@example\.com/);
+  assert.match(rendered, /cc cc@example\.com/);
+  assert.match(rendered, /bcc blind@example\.com/, 'a recipient in the log the reader never sees is not logged');
+});
+
 test('recent_activity says so plainly when logging is off', async () => {
   const { tools } = build();
   assert.match(textOf(await call(tools, 'recent_activity', {})), /Call logging is off/);
@@ -297,4 +347,13 @@ test('a comma inside a quoted display name does not become a second recipient', 
   ]);
   assert.deepEqual(parseAddressList(undefined), []);
   assert.deepEqual(parseAddressList(''), []);
+});
+
+test('an unterminated quote keeps every recipient', () => {
+  const parsed = parseAddressList('"Roberts, Dan <dan@example.com>, eve@example.com');
+  assert.ok(parsed.includes('dan@example.com'));
+  assert.ok(
+    parsed.includes('eve@example.com'),
+    'a header the parser cannot read must not quietly shorten the recipient list',
+  );
 });

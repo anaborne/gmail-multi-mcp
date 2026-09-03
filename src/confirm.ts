@@ -85,6 +85,7 @@ export interface SendConfirmation {
   from: string;
   to: string[];
   cc?: string[];
+  bcc?: string[];
   subject: string;
   preview: string;
 }
@@ -107,6 +108,7 @@ export async function confirmSend(
     `From: ${details.from}`,
     `To: ${details.to.join(', ') || '(none)'}`,
     ...(details.cc && details.cc.length > 0 ? [`Cc: ${details.cc.join(', ')}`] : []),
+    ...(details.bcc && details.bcc.length > 0 ? [`Bcc: ${details.bcc.join(', ')}`] : []),
     `Subject: ${details.subject || '(none)'}`,
     '',
     preview,
