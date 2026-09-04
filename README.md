@@ -77,7 +77,7 @@ Any number of accounts works. Add the label to `GMAIL_ACCOUNTS` and give it an `
 
 ## Scopes
 
-Full, the default: `gmail.modify`. Read, drafts, send, labels, trash. It cannot permanently delete a message or a thread; `delete_draft` is the one call that destroys mail without a trash step.
+Full, the default: `gmail.modify`. Read, drafts, send, labels, trash. It cannot permanently delete a message or a thread; `delete_draft` and `update_draft` are the two calls that destroy mail without a trash step.
 Read only: `GMAIL_SCOPE_PROFILE=readonly` requests `gmail.readonly`, and the server registers only the read tools.
 
 ## Runtime and testing
@@ -88,7 +88,7 @@ The two desktop dialogs are the one part not covered by the unit suite, since os
 
 ## Limits
 
-Attachments are listed with their filenames, types, and sizes, not downloaded. Nothing here permanently deletes a received message; `trash_thread` is reversible; `delete_draft` and the two send tools cannot be undone. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled. The dialogs are macOS only, and on any other platform a send is refused while `GMAIL_CONFIRM_POPUP` is on.
+Attachments are listed with their filenames, types, and sizes, not downloaded. Nothing here permanently deletes a received message; `trash_thread` is reversible; `delete_draft`, `update_draft` and the two send tools cannot be undone. Send-as aliases cannot be read without the settings scope, so `from` must be the account's own address. There is no push or watch; searches are polled. The dialogs are macOS only, and on any other platform a send is refused while `GMAIL_CONFIRM_POPUP` is on.
 
 ## License
 

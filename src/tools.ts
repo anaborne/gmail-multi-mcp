@@ -811,6 +811,8 @@ export function registerTools(
           account: resolved.config.label,
           diverged: divergedFrom(resolved),
           to: [...(draft.to ?? [])],
+          cc: draft.cc ? [...draft.cc] : undefined,
+          bcc: draft.bcc ? [...draft.bcc] : undefined,
           subject: draft.subject,
           draftId: updated.draftId,
         });
