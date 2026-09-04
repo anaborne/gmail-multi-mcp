@@ -2,6 +2,19 @@
 
 An [MCP](https://modelcontextprotocol.io) server that holds several Gmail accounts open at the same time. Reads follow an active mailbox that a `set_active_account` call switches, writes always name their own, every call is logged, and a desktop dialog confirms each send.
 
+## In plain English
+
+gmail-multi-mcp connects an AI assistant to several Gmail accounts at once, each result marked by
+the account it came from. A normal Gmail connection reaches one account, so someone with a personal
+address and a work address has to disconnect one to reach the other, or merge them and lose track of
+which message came where. The design is built around one mistake, mail leaving the wrong mailbox.
+Anything that changes a mailbox has to name it, and the call is refused when that is not the account
+in use unless the switch is stated. Before an account's credentials are used, the tool asks Google
+which address they belong to and compares that with the address in its configuration, so a
+credential filed under the wrong name is caught before it reads the wrong inbox. Sending is switched
+off until someone turns it on, and while it is off the assistant is given no way to send. Every call
+is written to a log the tool can read back, so which account a message went out from has an answer.
+
 ## The problem
 
 A Gmail connector authenticates one Google account. Reaching a second mailbox means disconnecting and reconnecting, or forwarding one account into the other, which merges two inboxes that were kept apart on purpose. Both lose the distinction that decides what happens next: a recruiter's reply in the job-search account is not the same event as the same message in a personal one.
