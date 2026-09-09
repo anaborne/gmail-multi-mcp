@@ -18,3 +18,9 @@ token.json
 # Logs
 npm-debug.log*
 *.log
+
+# added 2026-09-08 during disk cleanup
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
