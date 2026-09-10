@@ -357,3 +357,67 @@ test('an unterminated quote keeps every recipient', () => {
     'a header the parser cannot read must not quietly shorten the recipient list',
   );
 });
+
+/** The allowlist is the only unattended send, so these check the recipient set rather than one
+ * address at a time. */
+const ALLOWED = { GMAIL_ALLOW_SEND: 'true', GMAIL_SEND_ALLOWLIST: 'b@gmail.com>report@example.com' };
+
+function counting(env) {
+  let asked = 0;
+  const { tools } = build(env, {
+    confirmSend: async () => {
+      asked += 1;
+      return 'declined';
+    },
+  });
+  return { tools, asked: () => asked };
+}
+
+test('an allowlisted recipient sends with no dialog', async () => {
+  const { tools, asked } = counting(ALLOWED);
+  await call(tools, 'send_message', { account: 'jobs', to: ['report@example.com'], body: 'b' });
+  assert.equal(asked(), 0);
+});
+
+test('a recipient off the allowlist still raises the dialog', async () => {
+  const { tools, asked } = counting(ALLOWED);
+  const result = await call(tools, 'send_message', { account: 'jobs', to: ['dan@example.com'], body: 'b' });
+  assert.equal(asked(), 1);
+  assert.equal(result.isError, true);
+  assert.match(textOf(result), /was not sent/);
+});
+
+test('one address off the list puts the whole message back behind the dialog', async () => {
+  for (const extra of [{ cc: ['dan@example.com'] }, { bcc: ['dan@example.com'] }]) {
+    const { tools, asked } = counting(ALLOWED);
+    await call(tools, 'send_message', {
+      account: 'jobs',
+      to: ['report@example.com'],
+      body: 'b',
+      ...extra,
+    });
+    assert.equal(asked(), 1, `${Object.keys(extra)[0]} must not ride along on an allowlisted To`);
+  }
+});
+
+test('the allowlist pins the sending mailbox as well as the recipient', async () => {
+  const { tools, asked } = counting(ALLOWED);
+  await call(tools, 'send_message', { account: 'personal', to: ['report@example.com'], body: 'b' });
+  assert.equal(asked(), 1, 'the entry names b@gmail.com as the only mailbox that may send unattended');
+});
+
+test('a display name cannot smuggle a recipient past the allowlist', async () => {
+  const { tools, asked } = counting(ALLOWED);
+  await call(tools, 'send_message', {
+    account: 'jobs',
+    to: ['"report@example.com" <dan@example.com>'],
+    body: 'b',
+  });
+  assert.equal(asked(), 1, 'matching is on the address that would receive the mail, not the display name');
+});
+
+test('an unset allowlist leaves every send behind the dialog', async () => {
+  const { tools, asked } = counting({ GMAIL_ALLOW_SEND: 'true' });
+  await call(tools, 'send_message', { account: 'jobs', to: ['report@example.com'], body: 'b' });
+  assert.equal(asked(), 1);
+});

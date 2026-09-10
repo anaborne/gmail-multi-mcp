@@ -6,6 +6,7 @@ import {
   configFromEnv,
   parseAllowSend,
   parseScopeProfile,
+  parseSendAllowlist,
   scopeFor,
   GMAIL_MODIFY_SCOPE,
   GMAIL_READONLY_SCOPE,
@@ -172,4 +173,20 @@ test('a failed identity check stays failed rather than retrying every call', asy
   await assert.rejects(() => registry.resolve('personal'));
   await assert.rejects(() => registry.resolve('personal'));
   assert.equal(counter.calls, 1);
+});
+
+test('GMAIL_SEND_ALLOWLIST parses both entry forms and normalizes case', () => {
+  const entries = parseSendAllowlist(' Me@Work.example > Me@Personal.example , open@example.com ');
+  assert.deepEqual(entries, [
+    { from: 'me@work.example', to: 'me@personal.example' },
+    { from: undefined, to: 'open@example.com' },
+  ]);
+});
+
+test('GMAIL_SEND_ALLOWLIST refuses anything that does not read as an address', () => {
+  assert.deepEqual(parseSendAllowlist(undefined), []);
+  assert.deepEqual(parseSendAllowlist('   '), []);
+  for (const bad of ['not-an-address', 'a@b.example>', 'a@b.example>c@d.example>e@f.example']) {
+    assert.throws(() => parseSendAllowlist(bad), /GMAIL_SEND_ALLOWLIST/);
+  }
 });

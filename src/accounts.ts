@@ -48,6 +48,14 @@ export interface ServerConfig {
   auditLogPath: string | undefined;
   /** Raise a desktop dialog before a send. */
   confirmSends: boolean;
+  /** Recipients a send may reach unattended. Empty means every send raises the dialog. */
+  sendAllowlist: SendAllowEntry[];
+}
+
+/** `to` is the only recipient this entry permits; `from` narrows it to one sending mailbox. */
+export interface SendAllowEntry {
+  from: string | undefined;
+  to: string;
 }
 
 const LABEL_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
@@ -82,6 +90,35 @@ export function parseAllowSend(raw: string | undefined): boolean {
       `sending, or leave it unset. Anything ambiguous is refused rather than guessed, because the ` +
       `wrong guess puts mail on the wire.`,
   );
+}
+
+/** The one place a send skips the dialog. `sender>recipient` pins both ends; a bare address
+ * accepts any sender. An empty list allowlists nobody, so a typo in the variable name leaves the
+ * dialog in front of every send rather than removing it. */
+export function parseSendAllowlist(raw: string | undefined): SendAllowEntry[] {
+  const value = raw?.trim();
+  if (!value) return [];
+  return value.split(',').map((item) => {
+    const [left, right, ...rest] = item.split('>');
+    if (rest.length > 0) {
+      throw new ConfigError(
+        `GMAIL_SEND_ALLOWLIST entry ${JSON.stringify(item)} carries more than one ">". An entry is ` +
+          `either "recipient" or "sender>recipient".`,
+      );
+    }
+    const from = right === undefined ? undefined : normalizeEmail(left!);
+    const to = normalizeEmail(right === undefined ? left! : right);
+    for (const address of [from, to]) {
+      if (address !== undefined && !looksLikeEmail(address)) {
+        throw new ConfigError(
+          `GMAIL_SEND_ALLOWLIST entry ${JSON.stringify(item)} does not read as an address. Use ` +
+            `"recipient" or "sender>recipient", comma-separated. Nothing is guessed here, because a ` +
+            `guess puts unattended mail on the wire.`,
+        );
+      }
+    }
+    return { from, to };
+  });
 }
 
 /** Default of 60 minutes. An hour is long enough not to nag and short enough that a
@@ -221,6 +258,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
     activeTtlMinutes: parseActiveTtl(env.GMAIL_ACTIVE_TTL_MINUTES),
     auditLogPath: parseAuditLogPath(env.GMAIL_AUDIT_LOG),
     confirmSends: parseConfirmSends(env.GMAIL_CONFIRM_POPUP),
+    sendAllowlist: parseSendAllowlist(env.GMAIL_SEND_ALLOWLIST),
   };
 }
 

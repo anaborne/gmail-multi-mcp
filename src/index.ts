@@ -32,7 +32,12 @@ function instructionsFor(registry: AccountRegistry): string {
           'subject, and the send is refused unless they click Send, so never describe a send as done ' +
           'until the tool has returned.'
         : 'There is no confirmation dialog, so confirm the account and the recipient in the ' +
-          'conversation before you send.')
+          'conversation before you send.') +
+      (registry.config.sendAllowlist.length > 0
+        ? ' One set of addresses is allowlisted and sends to it without a dialog: ' +
+          `${registry.config.sendAllowlist.map((e) => (e.from ? `${e.from} to ${e.to}` : e.to)).join(', ')}. ` +
+          'A message carrying any other recipient, in To, Cc or Bcc, goes back behind the dialog.'
+        : '')
     : 'Sending is disabled on this server, deliberately. There are no send tools. A saved draft is ' +
       'the finished deliverable; the user sends it from Gmail. Do not treat this as an obstacle.';
 
@@ -94,6 +99,11 @@ async function main(): Promise<void> {
     `${NAME} v${VERSION} ready on stdio. accounts: ${summary}. ` +
       `sending: ${registry.config.allowSend ? 'enabled' : 'disabled'}. ` +
       `confirm: ${confirm}. ` +
+      `send allowlist: ${
+        registry.config.sendAllowlist
+          .map((e) => (e.from ? `${e.from}>${e.to}` : e.to))
+          .join(' ') || 'empty'
+      }. ` +
       `scope: ${registry.config.scopeProfile}. ` +
       `active ttl: ${registry.config.activeTtlMinutes || 'none'}. ` +
       `log: ${registry.config.auditLogPath ?? 'off'}\n`,

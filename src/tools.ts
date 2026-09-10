@@ -100,7 +100,7 @@ export function registerTools(
   audit: AuditLog,
   deps: ToolDeps = defaultDeps,
 ): void {
-  const { allowSend, scopeProfile, confirmSends } = registry.config;
+  const { allowSend, scopeProfile, confirmSends, sendAllowlist } = registry.config;
   const writable = scopeProfile !== 'readonly';
 
   /** Names the mailbox on every result, and says when it is not the active one, so the
@@ -915,8 +915,28 @@ export function registerTools(
 
   if (!allowSend) return;
 
+  /**
+   * Every recipient the message carries, Cc and Bcc included, has to be on the list and match the
+   * sending mailbox; one address off it and the whole message goes back behind the dialog.
+   * Matching is on the address `extractAddress` returns, so a display name reading
+   * `"allowed@example.com" <attacker@example.com>` is judged on the address that receives the mail.
+   */
+  function allowlisted(account: Account, draft: MessageDraft): boolean {
+    if (sendAllowlist.length === 0) return false;
+    const from = account.config.email.toLowerCase();
+    const recipients = [...(draft.to ?? []), ...(draft.cc ?? []), ...(draft.bcc ?? [])];
+    if (recipients.length === 0) return false;
+    return recipients.every((raw) => {
+      const address = extractAddress(raw).toLowerCase();
+      return sendAllowlist.some(
+        (entry) => entry.to === address && (entry.from === undefined || entry.from === from),
+      );
+    });
+  }
+
   /** Fail-closed. Anything other than an explicit click on Send stops the call. */
   async function gateSend(account: Account, draft: MessageDraft): Promise<void> {
+    if (allowlisted(account, draft)) return;
     if (!confirmSends) return;
     const outcome = await deps.confirmSend(
       {
