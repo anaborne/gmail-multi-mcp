@@ -9,6 +9,12 @@ dist/
 client_secret*.json
 token.json
 
+# Tooling state. These belong to whoever is working on the repo, not to the repo.
+.claude/
+.claude-mem/
+.cursor/
+.aider*
+
 # Editor / OS
 .DS_Store
 .idea/
