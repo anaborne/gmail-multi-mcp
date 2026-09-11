@@ -15,7 +15,9 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-/** Longer than the dialog's own giving-up, so the timeout is the dialog's, not the pipe's. */
+/** Both must outlast the dialog's own giving-up, or they answer first and report the wrong reason.
+ * An Apple Event inside a `tell` block defaults to 120s, the dialog's own limit, so the tell block
+ * carries an explicit `with timeout` and the pipe gets 140s. */
 const EXEC_TIMEOUT_MS = 140_000;
 const DIALOG_TIMEOUT_SECONDS = 120;
 
@@ -32,9 +34,11 @@ export function popupsPossible(platform: string = process.platform): boolean {
 const CONFIRM_SCRIPT = [
   'on run argv',
   '  tell application (path to frontmost application as text)',
-  '    set r to display dialog (item 1 of argv) with title (item 2 of argv) ' +
+  `    with timeout of ${DIALOG_TIMEOUT_SECONDS + 10} seconds`,
+  '      set r to display dialog (item 1 of argv) with title (item 2 of argv) ' +
     'buttons {"Cancel", item 3 of argv} default button "Cancel" with icon caution ' +
     `giving up after ${DIALOG_TIMEOUT_SECONDS}`,
+  '    end timeout',
   '  end tell',
   '  if gave up of r then',
   '    return "TIMEOUT"',
