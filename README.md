@@ -1,6 +1,6 @@
 # gmail-multi-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that holds several Gmail accounts open at the same time. Reads follow an active mailbox that a `set_active_account` call switches, writes always name their own, every call is logged, and a desktop dialog confirms each send.
+An [MCP](https://modelcontextprotocol.io) server that holds several Gmail accounts open at the same time. Reads follow an active mailbox that a `set_active_account` call switches, writes always name their own, every call is logged, and a desktop dialog confirms each send unless an allowlist clears it.
 
 ## In plain English
 
@@ -44,6 +44,8 @@ Every call appends a JSON line to `GMAIL_AUDIT_LOG`, `~/.gmail-multi-mcp/audit.j
 ## Confirming a send
 
 With `GMAIL_ALLOW_SEND=true`, every send raises a native macOS dialog showing the account, the from address, the recipients, the subject, and the first 400 characters of the body. Anything other than a click on Send stops the call, the dialog being dismissed, timing out after two minutes, and failing to appear included. `npm run popup-test` exercises both dialogs without touching Gmail.
+
+`GMAIL_SEND_ALLOWLIST` lets named pairs through without one. Entries are `recipient` or `sender>recipient`, comma-separated, and a send goes out unattended only when every recipient across To, Cc and Bcc matches an entry. One address off the list puts the whole message back behind the dialog. The paired form pins both ends, so an allowlisted address cannot be reached from a mailbox that was never meant to send to it. An entry that does not read as an address is a startup error, not a guess.
 
 MCP elicitation would put this prompt in the chat instead, and Claude Code supports it. Claude Desktop does not, and the server runs on the user's machine either way, so the dialog goes on the desktop. `GMAIL_CONFIRM_POPUP=off` removes it.
 
@@ -95,7 +97,7 @@ Read only: `GMAIL_SCOPE_PROFILE=readonly` requests `gmail.readonly`, and the ser
 
 ## Runtime and testing
 
-73 tests, `npm test`, run from a clean clone with no network and no credentials. CI runs them on Node 18, 20, and 22. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
+81 tests, `npm test`, run from a clean clone with no network and no credentials. CI runs them on Node 18, 20, and 22. `npm run verify` launches the server the way an MCP client does and exercises the live API on every configured account: identity, inheritance of the active mailbox, refusal of a divergent write, the `confirmAccountSwitch` override, isolation of draft IDs between mailboxes, refusal of a `from` the account does not own, refusal of a newline in a subject, and the audit records for all of it. It creates one draft per account, deletes them on the way out including on failure, and never sends.
 
 The two desktop dialogs are the one part not covered by the unit suite, since osascript needs macOS and a logged-in window server. `npm run popup-test` covers them by hand.
 
