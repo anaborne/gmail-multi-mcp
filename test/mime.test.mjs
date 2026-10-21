@@ -8,6 +8,7 @@ import {
   fromBase64Url,
   headerValue,
   htmlToText,
+  textToHtml,
   toBase64Url,
 } from '../dist/mime.js';
 
@@ -30,6 +31,23 @@ test('builds a message with the headers a client needs', () => {
   assert.match(message, /\r\nCc: cc@example\.com\r\n/);
   assert.match(message, /\r\nSubject: Trading operations\r\n/);
   assert.match(message, /Content-Type: text\/plain; charset="UTF-8"/);
+});
+
+test('a plain body also carries the html Gmail compose would write for it', () => {
+  const message = decode(buildRawMessage({ from: 'me@gmail.com', to: ['you@example.com'], text: 'Hello.' }));
+  assert.match(message, /Content-Type: multipart\/alternative/);
+  assert.match(message, /Content-Type: text\/plain/);
+  assert.match(message, /Content-Type: text\/html/);
+  assert.ok(message.includes(Buffer.from('<div dir="ltr"><div>Hello.</div></div>', 'utf8').toString('base64')));
+});
+
+test('textToHtml keeps lines and blank lines and links bare and full URLs', () => {
+  assert.equal(
+    textToHtml('Hi Dan,\r\n\r\nSee github.com/anaborne/freshli, and https://kalshi.com/team.\nA & B <c>'),
+    '<div dir="ltr"><div>Hi Dan,</div><div><br></div><div>See <a href="https://github.com/anaborne/freshli">' +
+      'github.com/anaborne/freshli</a>, and <a href="https://kalshi.com/team">https://kalshi.com/team</a>.</div>' +
+      '<div>A &amp; B &lt;c&gt;</div></div>',
+  );
 });
 
 test('a non-ASCII subject is RFC 2047 encoded', () => {
