@@ -89,6 +89,38 @@ function part(contentType: string, body: string): string {
   ].join('\r\n');
 }
 
+const LINK_PATTERN = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>]*[^\s<>.,;:)]/gi;
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/** The HTML Gmail's compose writes for a plain-text body: one div per line, a blank line as
+ * <div><br></div>, and URLs (github.com/anaborne/freshli as well as https://...) as links. */
+export function textToHtml(text: string): string {
+  const line = (value: string): string => {
+    let out = '';
+    let at = 0;
+    for (const match of value.matchAll(LINK_PATTERN)) {
+      const url = match[0];
+      const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      out += `${escapeHtml(value.slice(at, match.index))}<a href="${escapeHtml(href)}">${escapeHtml(url)}</a>`;
+      at = match.index! + url.length;
+    }
+    return out + escapeHtml(value.slice(at));
+  };
+  const rows = text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((value) => (value.trim() === '' ? '<div><br></div>' : `<div>${line(value)}</div>`));
+  return `<div dir="ltr">${rows.join('')}</div>`;
+}
+
 export function buildRawMessage(draft: MessageDraft): string {
   const from = assertAddresses('from', [draft.from])[0]!;
   const to = assertAddresses('to', draft.to ?? []);
@@ -110,7 +142,9 @@ export function buildRawMessage(draft: MessageDraft): string {
   headers.push('MIME-Version: 1.0');
 
   const text = draft.text;
-  const html = draft.html;
+  // A text/plain-only message loses its line layout once Gmail sends it, so a plain body always
+  // travels with the HTML Gmail's own compose would write for it.
+  const html = draft.html ?? (text !== undefined ? textToHtml(text) : undefined);
 
   let body: string;
   if (text !== undefined && html !== undefined) {

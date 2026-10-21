@@ -683,11 +683,17 @@ export function registerTools(
     cc: z.array(z.string()).optional().describe('Cc recipients, one bare email address per entry.'),
     bcc: z.array(z.string()).optional().describe('Bcc recipients, one bare email address per entry.'),
     subject: z.string().optional().describe('Subject line. Ignored when replyToMessageId is set.'),
-    body: z.string().optional().describe('Plain text body. Prefer this over htmlBody for correspondence.'),
+    body: z
+      .string()
+      .optional()
+      .describe(
+        'Plain text body. Prefer this over htmlBody for correspondence; the message also carries ' +
+          'the HTML Gmail compose would write for it (a div per line, URLs as links).',
+      ),
     htmlBody: z
       .string()
       .optional()
-      .describe('HTML body. When both are given the message carries both alternatives.'),
+      .describe('HTML body, in place of the one built from body. When both are given the message carries both alternatives.'),
     from: z
       .string()
       .optional()
